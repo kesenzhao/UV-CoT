@@ -1,3 +1,4 @@
+
 import os
 import io
 import tqdm
@@ -60,6 +61,8 @@ class InferenceSampler(torch.utils.data.sampler.Sampler):
 
     def __len__(self):
         return len(self._local_indices)
+
+
 
 class GenDataset(torch_data.Dataset):
     def __init__(self, qa_file, question_process, max_size, start=0, end=-1, repeat_time=1):
@@ -209,7 +212,6 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str, default='')
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--conv-mode", type=str, default="llava_v1")
-    # TextVQA, DocVQA, OCRVQA, STVQA
     parser.add_argument('--ds_name', type=str, default='')
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--num-workers', type=int, default=1)
@@ -273,10 +275,7 @@ if __name__ == '__main__':
     with torch.inference_mode():
         for batch in tqdm.tqdm(dataloader, f'Generating answers'):
             input_size = batch['input_ids'].shape[-1]
-            # print(f'input_ids: {batch["input_ids"]}')
-            # print(f'Input: {tokenizer.batch_decode(batch["input_ids"])}'
-            #       f'input_ids: {batch["input_ids"]}')
-                #   f'attn_mask: {batch["attention_mask"]}')
+            print(f'input_size: {input_size}')
             if args.is_yesno:
                 output = model.generate(
                     inputs=batch['input_ids'].cuda(),
@@ -290,9 +289,9 @@ if __name__ == '__main__':
                     return_dict_in_generate=True)
 
                 new_scores = []
-                # print("output_scores len:", len(output.scores))
+    
                 output_scores_all = torch.stack(output.scores, dim=0)
-                # print(output_scores_all.shape)
+    
                 output_scores_reshape = (batch['input_ids'].shape[0], len(output.scores), args.num_beam, output.scores[0].shape[-1])
                 new_output_scores = output_scores_all.view(output_scores_reshape)
 
@@ -346,7 +345,7 @@ if __name__ == '__main__':
                         return_dict_in_generate=True)
                 else:
                     print("use sampling:", args.temperature)
-                    output = model.generate(
+                    output = model.generate_bbox(
                         inputs=batch['input_ids'].cuda(),
                         images=batch['images'].half().cuda(),
                         image_sizes=batch['image_sizes'],
@@ -355,52 +354,54 @@ if __name__ == '__main__':
                         max_new_tokens=args.max_tokens,
                         use_cache=True,
                         return_dict_in_generate=True)
+                outputs += output
 
-                # print(output.scores, flush=True)
-                for question, output_ids, question_id, metainfos in zip(batch['raw_questions'], output.sequences, batch['question_id'], batch['metainfos']):
-                    response = tokenizer.decode(
-                            output_ids, skip_special_tokens=True)
-                    response = response.strip()
-
-                    if 'ds_question_id' in metainfos:
-                        outputs.append({
-                            'question_id': question_id,
-                            'ds_question_id': metainfos['ds_question_id'],
-                            'raw_question': question,
-                            'answer': response,
-                            'metainfos': metainfos,
-                            'model_path': args.checkpoint
-                        })
-                    else:
-                        outputs.append({
-                            'question_id': question_id,
-                            'raw_question': question,
-                            'answer': response,
-                            'metainfos': metainfos,
-                            'model_path': args.checkpoint
-                        })
+        
 
             cnt += 1
             if cnt == 10:
                 torch.distributed.barrier()
                 cnt = 0
-
     torch.distributed.barrier()
 
+    
+        
+    # 获取分布式环境中的进程数和当前进程 ID
     world_size = torch.distributed.get_world_size()
+    rank = torch.distributed.get_rank()
+
+    # 初始化一个列表，用于存储从所有进程收集的输出
     merged_outputs = [None for _ in range(world_size)]
+
+    # 将当前进程的输出转为 JSON 并分发到所有进程
     torch.distributed.all_gather_object(merged_outputs, json.dumps(outputs))
 
-    merged_outputs = [json.loads(_) for _ in merged_outputs]
-    merged_outputs = [_ for _ in itertools.chain.from_iterable(merged_outputs)]
-    print(f'Merged outputs: {len(merged_outputs)}')
-    question_ids = [x['question_id'] for x in merged_outputs]
-
-    if torch.distributed.get_rank() == 0:
+    # 将收集到的 JSON 数据反序列化为 Python 对象
+    merged_outputs = [json.loads(output) for output in merged_outputs]
+    
+    merged_outputs = list(itertools.chain.from_iterable(merged_outputs))  # 展平成一个列表
+    # 主进程负责写入文件
+    if rank == 0:
         print(f"Evaluating {args.ds_name} ...", flush=True)
-        answers_file_path = args.answer_file
 
-        with open(answers_file_path, 'w', encoding='utf-8') as f:
-            json.dump(merged_outputs, f, ensure_ascii=False)
+        # 打开数据集文件读取原始内容
+        with open(args.ds_name, "r") as f:
+            lines = f.readlines()
+        
+        # 打开文件写入更新后的内容
+        start=args.start_pos 
+        end=args.end_pos
+        with open(f'{args.ds_name}', "w") as f:
+            for i, line in enumerate(lines):
+                data = json.loads(line)  # 解析原始 JSON 数据
+                if end ==-1:
+                    end = 100000
+                if i >= start and i < end:
+                    index_i = i - start
+                    data['bbox'] = merged_outputs[index_i * 10:(index_i + 1) * 10]  # 更新 bbox 字段
+                f.write(json.dumps(data) + "\n")  # 写入更新后的数据
 
+    # 同步所有进程，确保文件写入完成后再继续后续操作
     torch.distributed.barrier()
+
+    
