@@ -147,7 +147,7 @@ To reproduce the iterative training process in the paper, you need to do the fol
 bash scripts/v1_5/eval/cot_benchmark.sh UV-CoT
 ```
 
-2. Obtain the score using GPT-4o, the API KEY need to be set in `llava/eval/eval_cot_score.py`
+2. Single-GPU inference for ablation study
 
 ```bash
 bash scripts/v1_5/eval/cot_benchmark_ablations.sh UV-CoT
