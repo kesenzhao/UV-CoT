@@ -3,7 +3,7 @@
 
 ## Install
 
-1. Clone this repository and navigate to RLAIF-V folder
+1. Clone this repository and navigate to UV-CoT folder or download the code.
 ```bash
 git clone https://github.com/UV-CoT
 cd UV-CoT
@@ -20,6 +20,7 @@ pip install -e .
 wget https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.7.3/en_core_web_trf-3.7.3.tar.gz
 pip install en_core_web_trf-3.7.3.tar.gz
 ```
+4. 
 
 
 
