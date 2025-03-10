@@ -175,8 +175,7 @@ class MiniCPM_Llama3_V_RM:
         print("response:", self.tokenizer.decode(res.sequences[0]))
 
         response = self.model._decode_text(res.sequences, self.tokenizer)
-        # response = self.tokenizer.decode(
-        #     res.sequences[0], skip_special_tokens=True)
+
         response = response[0].strip()
 
         output_scores = res.scores[0][0]

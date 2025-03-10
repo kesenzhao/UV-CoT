@@ -120,44 +120,17 @@ def get_batch_logps(logits: torch.FloatTensor, labels: torch.LongTensor, return_
 
 
 def compute_cross_similarity_matrix(scaled_similarity, token_types):
-    """
-    计算图像和文本 token 之间的交叉相似性，通过矩阵化操作实现。
-
-    参数：
-    - scaled_similarity (Tensor): 形状为 [batch_size, seq_len, seq_len] 的相似性矩阵。
-    - token_types (Tensor): 形状为 [batch_size, seq_len] 的 token 类型，其中 0 表示文本 token，1 表示图像 token。
-
-    返回：
-    - cross_similarity_scores (Tensor): 形状为 [batch_size, num_image_tokens]，每个图像 token 与所有文本 token 之间的交叉相似性之和。
-    """
     batch_size, seq_len, _ = scaled_similarity.shape
-
-    # 创建文本和图像 token 的 mask
     text_mask = token_types == 0  # [batch_size, seq_len]
     image_mask = token_types == 1  # [batch_size, seq_len]
-
-    # 通过广播和矩阵运算，获取图像 token 和文本 token 之间的相似性
     text_indices = text_mask.unsqueeze(1).expand(-1, seq_len, -1)  # [batch_size, seq_len, seq_len]
     image_indices = image_mask.unsqueeze(2).expand(-1, seq_len, -1)  # [batch_size, seq_len, seq_len]
 
-    # 计算每个图像 token 与所有文本 token 之间的相似性
     cross_similarity_scores = (scaled_similarity * image_indices * text_indices).sum(dim=-1)  # [batch_size, seq_len]
 
-    # 选择每个 batch 中的图像 token 对应的交叉相似性
-    # image_cross_similarity_scores = cross_similarity_scores.gather(1, image_mask.sum(dim=-1, keepdim=True) - 1)
-    image_token_indices = image_mask.nonzero(as_tuple=True)  # 返回的是(batch_size, seq_len)维度上的图像token位置索引
+    image_token_indices = image_mask.nonzero(as_tuple=True) 
 
-    # 获取每个图像token的相似性分数
-    # 这里我们使用gather来根据图像token的索引从cross_similarity_scores中选取对应的相似性
-    # print(image_token_indices[1].shape)
-    # image_cross_similarity_scores = torch.gather(cross_similarity_scores, dim=1, index=image_token_indices[1].unsqueeze(1))
-    # print('token_indices:', image_token_indices.shape)
-    # print('similarity_scores:', cross_similarity_scores.shape)
-    image_cross_similarity_scores = cross_similarity_scores[image_token_indices].view(batch_size, -1)   # [batch_size, image_token_num]
-
-    # # 调整维度，确保输出为 [batch_size, image_token_num]
-    # print('image_cross_similarity_scores', image_cross_similarity_scores.shape)
-    # image_cross_similarity_scores = image_cross_similarity_scores.squeeze(1) # [batch_size, image_token_num]    
+    image_cross_similarity_scores = cross_similarity_scores[image_token_indices].view(batch_size, -1)   # [batch_size, image_token_num]  
     return image_cross_similarity_scores
 
 
@@ -289,41 +262,28 @@ import numpy as np
 
 
 def convert_region_to_token_coords(batch_best_regions, H, W):
-    """
-    将每个区域的二维坐标转换为一维 token 坐标，支持 tensor 输入，输出 tensor 格式。
-
-    参数:
-    - batch_best_regions (Tensor): 形状为 [batch_size, 4] 的 tensor，每行表示一个区域的坐标 (x1, y1, x2, y2)，值在 0 到 1 之间。
-    - H (int): 矩阵的高度（行数）。
-    - W (int): 矩阵的宽度（列数）。
-
-    返回:
-    - batch_best_token_coords (Tensor): 形状为 [batch_size, N] 的 tensor，N 为每个区域一维 token 坐标的数量。
-    """
     batch_best_token_coords = []
 
-    # 确保 batch_best_regions 是 tensor
     if isinstance(batch_best_regions, torch.Tensor):
         batch_best_regions = batch_best_regions.detach().cpu().numpy()
     
     for region in batch_best_regions:
         x1, y1, x2, y2 = region
         
-        # 将区域坐标转换为实际的二维索引 (假设 x1, x2, y1, y2 都是0到1之间的小数)
-        x1, x2 = int(x1 * H), int(x2 * H)  # 对应的行索引
-        y1, y2 = int(y1 * W), int(y2 * W)  # 对应的列索引
+    
+        x1, x2 = int(x1 * H), int(x2 * H) 
+        y1, y2 = int(y1 * W), int(y2 * W) 
         
-        # 将区域内的每个二维坐标转换为一维 token 坐标
+
         region_token_coords = []
         for i in range(x1, x2):
             for j in range(y1, y2):
                 one_d_token_index = i * W + j
                 region_token_coords.append(one_d_token_index)
         
-        # 将 region_token_coords 转换为 tensor 并添加到 batch_best_token_coords 中
         batch_best_token_coords.append(torch.tensor(region_token_coords, dtype=torch.long))
 
-    # 将所有的 token 坐标拼接成一个 batch 的 tensor
+
     batch_best_token_coords = torch.nn.utils.rnn.pad_sequence(batch_best_token_coords, batch_first=True, padding_value=-1)
 
     return batch_best_token_coords
