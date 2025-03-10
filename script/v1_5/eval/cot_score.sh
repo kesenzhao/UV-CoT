@@ -8,11 +8,8 @@ script_paths=(
 "flickr30k"
 "gqa"
 "infographicsvqa"
-"openimages"
-"textcap"
 "textvqa"
 "vsr"
-"cub"
 "dude"
 "sroie"
 )

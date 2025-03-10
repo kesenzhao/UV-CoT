@@ -486,10 +486,10 @@ class LLaVA15DPOTrainer(ZephyrTrainer):
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
         CoT_reward_accuracies = (CoT_chosen_rewards > CoT_rejected_rewards).float()
 
-        SFT_weight = float(os.environ.get('SFT_weight', 0.9))
+        SFT_weight = float(os.environ.get('SFT_weight', 0.7))
         # DPO_weight = float(os.environ.get('DPO_weight', 1.0))
-        DPO_weight = float(os.environ.get('DPO_weight', 0.1))
-        CoT_weight = float(os.environ.get('DPO_weight', 0.001))
+        DPO_weight = float(os.environ.get('DPO_weight', 0.2))
+        CoT_weight = float(os.environ.get('DPO_weight', 0.1))
         # print(losses.mean(), CoT_losses.mean())
         loss = DPO_weight * losses.mean() - SFT_weight * policy_win_logp.mean() + CoT_weight * CoT_losses.mean()
 

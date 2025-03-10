@@ -117,8 +117,6 @@ class GenDataset(torch_data.Dataset):
         item = self.qa_data[index]
         if "image_id" in item.keys():
             imgid = item["image_id"]
-
-        # print(item.keys())
         if "image" in item.keys():
             img_b64 = item['image']
 
@@ -127,10 +125,10 @@ class GenDataset(torch_data.Dataset):
             else:
                 image = Image.open(img_b64).convert('RGB')
         elif "image_path" in item.keys():
-            # print("in")
+        
             image = Image.open(item['image_path']).convert('RGB')
         elif "image_path" in item['metainfos'].keys():
-            # print("in metainfos")
+           
             image = Image.open(item['metainfos']['image_path']).convert('RGB')
 
         metainfo = {key:value for key,value in item.items() if key not in ["image_id", "question", "image"]}
@@ -138,7 +136,6 @@ class GenDataset(torch_data.Dataset):
         raw_question = item['question']
 
         question_input_ids = self.question_process(raw_question)
-        # print("question_input_ids:", question_input_ids)
 
         return {
             'question_id': item['question_id'] if 'question_id' in item else self.start_idx+index,
@@ -366,42 +363,32 @@ if __name__ == '__main__':
 
     
         
-    # 获取分布式环境中的进程数和当前进程 ID
     world_size = torch.distributed.get_world_size()
     rank = torch.distributed.get_rank()
 
-    # 初始化一个列表，用于存储从所有进程收集的输出
     merged_outputs = [None for _ in range(world_size)]
 
-    # 将当前进程的输出转为 JSON 并分发到所有进程
     torch.distributed.all_gather_object(merged_outputs, json.dumps(outputs))
 
-    # 将收集到的 JSON 数据反序列化为 Python 对象
     merged_outputs = [json.loads(output) for output in merged_outputs]
     
-    merged_outputs = list(itertools.chain.from_iterable(merged_outputs))  # 展平成一个列表
-    # 主进程负责写入文件
+    merged_outputs = list(itertools.chain.from_iterable(merged_outputs))  
     if rank == 0:
         print(f"Evaluating {args.ds_name} ...", flush=True)
-
-        # 打开数据集文件读取原始内容
         with open(args.ds_name, "r") as f:
             lines = f.readlines()
         
-        # 打开文件写入更新后的内容
         start=args.start_pos 
         end=args.end_pos
         with open(f'{args.ds_name}', "w") as f:
             for i, line in enumerate(lines):
-                data = json.loads(line)  # 解析原始 JSON 数据
+                data = json.loads(line)  
                 if end ==-1:
                     end = 100000
                 if i >= start and i < end:
                     index_i = i - start
-                    data['bbox'] = merged_outputs[index_i * 10:(index_i + 1) * 10]  # 更新 bbox 字段
-                f.write(json.dumps(data) + "\n")  # 写入更新后的数据
-
-    # 同步所有进程，确保文件写入完成后再继续后续操作
+                    data['bbox'] = merged_outputs[index_i * 10:(index_i + 1) * 10]  
+                f.write(json.dumps(data) + "\n")  
     torch.distributed.barrier()
 
     

@@ -1,11 +1,3 @@
-# import debugpy
-# try:
-#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-#     debugpy.listen(("localhost", 9501))
-#     print("Waiting for debugger attach")
-#     debugpy.wait_for_client()
-# except Exception as e:
-#     pass
 
 import os
 import io
@@ -42,7 +34,7 @@ from llava.mm_utils import tokenizer_image_token, process_images, get_model_name
 #                 with open(rank_file, 'r', encoding='utf-8') as infile:
 #                     for line in infile:
 #                         outfile.write(line)
-#                 os.remove(rank_file)  # 删除临时文件
+#                 os.remove(rank_file)  
 
 def torch_pad_sequence(sequence, padding_value, batch_first=True, padding_side='right'):
 
@@ -484,24 +476,9 @@ if __name__ == '__main__':
 
             cnt += 1
             if cnt == 10:
-                # 保存当前 batch 的 outputs 到磁盘
-                # save_outputs(outputs, args.answer_file, torch.distributed.get_rank(), batch_idx)
-                # # 清空 outputs 列表以释放显存
-                # outputs.clear()
                 torch.distributed.barrier()
                 cnt = 0
                 # batch_idx += 1
-
-    
-    # # 保存最后剩余的 outputs
-    # if outputs:
-    #     save_outputs(outputs, args.answer_file, torch.distributed.get_rank(), batch_idx)
-    # torch.distributed.barrier()
-    
-    #     # 合并所有 rank 的输出文件
-    # if torch.distributed.get_rank() == 0:
-    #     world_size = torch.distributed.get_world_size()
-    #     merge_files(f"{args.answer_file}.jsonl", world_size)
 
     torch.distributed.barrier()
 

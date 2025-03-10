@@ -239,11 +239,6 @@ def encode_multimodal_preference_sample(source, tokenizer, multimodal_cfg, prepr
                                 labels=rej_data_dict["labels"][0])
             win_data_dict = dict(input_ids=win_data_dict["input_ids"][0],
                                 labels=win_data_dict["labels"][0])
-
-    # print(f'rej dict: {rej_data_dict}', flush=True)
-    # print('inputs:', tokenizer.decode([(x if x != -200 else 0) for x in rej_data_dict['input_ids'].tolist()]), flush=True)
-    # print('labels:', tokenizer.decode([(x if x != -100 else 0) for x in rej_data_dict['labels'].tolist()]), flush=True)
-
     # image exist in the data
     if 'image' in source:
         rej_data_dict['image'] = win_data_dict['image'] = image
