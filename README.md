@@ -1,7 +1,4 @@
-
-<div align="center" style="font-size: 15pt">
 # UV-CoT
-
 
 
 ## Install
