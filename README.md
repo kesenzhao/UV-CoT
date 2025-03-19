@@ -130,7 +130,7 @@ To reproduce the iterative training process in the paper, you need to do the fol
   Follow the instructions in [data generation](https://github.com/RLHF-V/RLAIF-V?tab=readme-ov-file#data-generation) to generate preference pairs for the base model. Convert the generated jsonl file to huggingface parquet.
 - **S2. Change training config.**
 
-  In dataset code, replace `'openbmb/RLAIF-V-Dataset'` [here](muffin/data/datasets.py#L38) to your data path.
+  In dataset code, replace data_path [here](muffin/data/datasets.py#L38) to your data path.
 
   In [training script](script/train/llava15_train.sh), replace `--data_dir` with a new directory, replace `--model_name_or_path` with the base model path, set `--max_step` to the number of steps for 4 epoch, set `--save_steps` to the number of steps for 1/4 epoch.
 - **S3. Do DPO training.**
