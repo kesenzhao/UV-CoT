@@ -20,7 +20,6 @@ pip install -e .
 wget https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.7.3/en_core_web_trf-3.7.3.tar.gz
 pip install en_core_web_trf-3.7.3.tar.gz
 ```
-4. 
 
 
 
