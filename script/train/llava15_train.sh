@@ -6,7 +6,7 @@ exp_name=llava15_rlaifv
 deepspeed ./muffin/train/train_llava15.py \
     --deepspeed ./script/zero2.json  \
     --model_name_or_path liuhaotian/llava-v1.5-7b \
-    --data_dir ./RLAIF-V-Dataset_logps/ \
+    --data_dir ./rl_cot_logps/ \
     --image_folder not_used \
     --vision_tower openai/clip-vit-large-patch14-336 \
     --mm_use_im_start_end False \
@@ -23,11 +23,11 @@ deepspeed ./muffin/train/train_llava15.py \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 167 \
+    --save_steps 835 \
     --save_total_limit 50 \
     --data_source_names '' \
     --data_source_weights 1 \
-    --max_steps 2672 \
+    --max_steps 10000 \
     --learning_rate 5e-7 \
     --weight_decay 0.01 \
     --warmup_ratio 0.05 \

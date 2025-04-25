@@ -12,6 +12,8 @@ script_paths=(
 "vsr"
 "dude"
 "sroie"
+"v7w"
+"vstar"
 )
 
 CKPT=$1

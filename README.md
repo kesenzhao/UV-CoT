@@ -24,20 +24,36 @@ pip install en_core_web_trf-3.7.3.tar.gz
 
 
 
-## Data Generation
+## Preference Data Curation
 1. Environment Setup
 
-We provide the OmniLMM 12B model for feedback generation. If you wish to use the MiniCPM-Llama3-V 2.5 for giving feedback, please configure its inference environment according to the instructions in the [MiniCPM-V GitHub repository](https://github.com/OpenBMB/MiniCPM-V).
+Please download fine-tuned Llama3 8B models: [split model](https://thunlp.oss-cn-qingdao.aliyuncs.com/rlaifv_llama3_split_model.tar.gz) and [question transformation model](https://thunlp.oss-cn-qingdao.aliyuncs.com/rlaifv_llama3_changeq_model.tar.gz), and store them in the `./models/llama3_split` folder and the `./models/llama3_changeq` folder respectively.
 
-Please download our fine-tuned Llama3 8B models: [split model](https://thunlp.oss-cn-qingdao.aliyuncs.com/rlaifv_llama3_split_model.tar.gz) and [question transformation model](https://thunlp.oss-cn-qingdao.aliyuncs.com/rlaifv_llama3_changeq_model.tar.gz), and store them in the `./models/llama3_split` folder and the `./models/llama3_changeq` folder respectively.
-
-2. OmniLMM 12B Model Feedback
+2. Model Feedback
 
 The following script demonstrates using the LLaVA-v1.5-7b model to generate candidate answers and the OmniLMM 12B model to provide feedback.
 
 ```bash
 mkdir ./results
 bash ./script/data_gen/run_data_pipeline_llava15_omni.sh
+```
+
+If you want to evaluate according to final answers, please refer to:
+
+```bash
+bash ./script/data_gen/run_data_pipeline_llava15_omni_next.sh
+```
+
+If you have multi steps CoT, please refer to:
+
+```bash
+bash ./script/data_gen/run_data_pipeline_llava15_omni_divide.sh
+```
+
+If you want to use self-evaluated method , please refer to:
+
+```bash
+bash ./script/data_gen/run_data_pipeline_llava15_self_evaluated.sh
 ```
 
 
@@ -50,11 +66,9 @@ bash ./script/data_gen/run_data_pipeline_llava15_omni.sh
 We also prepare the image file in this [link](https://huggingface.co/datasets/deepcs233/Visual-CoT/tree/main/cot_with_detailed_reasoning_steps), you need to merge these split archive files and then extract them.
 
 
-- COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip)
+- COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip) [train2014](http://images.cocodataset.org/zips/train2014.zip)
 
 - GQA: [images](https://downloads.cs.stanford.edu/nlp/data/gqa/images.zip)
-
-- OCR-VQA: [download script](https://drive.google.com/drive/folders/1_GYPY5UkUy7HIcR0zq3ZCFgeZN7BAfm_?usp=sharing), **we save all files as `.jpg`**
 
 - TextVQA: [train_val_images](https://dl.fbaipublicfiles.com/textvqa/images/train_val_images.zip)
 
@@ -74,6 +88,8 @@ We also prepare the image file in this [link](https://huggingface.co/datasets/de
 
 - SROIE: [homepage](https://rrc.cvc.uab.es/?ch=13&com=downloads)
 
+- V* Bench: [homepage](https://huggingface.co/datasets/craigwu/vstar_bench)
+
   
 
 After downloading all of them, organize the data as follows in `./playground/data`,
@@ -88,9 +104,6 @@ After downloading all of them, organize the data as follows in `./playground/dat
 │   └── images
 ├── textvqa
 │   └── train_images
-└── vg
-│   ├── VG_100K
-│   └── VG_100K_2
 └── v7w
 │   └── images
 └── flickr30k
@@ -104,14 +117,12 @@ After downloading all of them, organize the data as follows in `./playground/dat
 │   └── vsr
 │   └── dude
 │   └── sroie
+│   └── vstar
 ```
 
 2. Training
 
 Here, we provide a training script to train the model in **1 iteration**. The `max_step` parameter should be adjusted according to the amount of your data.
-
-- **Fully Fine-tuning**
-  
 
 Run the following command to start fully fine-tuning.
 
@@ -126,7 +137,7 @@ bash ./script/train/llava15_train.sh
 To reproduce the iterative training process in the paper, you need to do the following steps for 4 times:
 - **S1. Data generation.**
 
-  Follow the instructions in [data generation](https://github.com/RLHF-V/RLAIF-V?tab=readme-ov-file#data-generation) to generate preference pairs for the base model. Convert the generated jsonl file to huggingface parquet.
+  Follow the instructions in Preference Data Curation to generate preference pairs for the base model. Convert the generated jsonl file to huggingface parquet.
 - **S2. Change training config.**
 
   In dataset code, replace data_path [here](muffin/data/datasets.py#L38) to your data path.
@@ -141,13 +152,13 @@ To reproduce the iterative training process in the paper, you need to do the fol
 
 ## Evaluation
 
-1. Single-GPU inference on both training datasets and zero-shot datasets, `UV-CoT` can be changed to other model names saved in the ./checkpoints/
+1. Inference on both training datasets and zero-shot datasets, `UV-CoT` can be changed to other model names saved in the ./checkpoints/
 
 ```bash
 bash scripts/v1_5/eval/cot_benchmark.sh UV-CoT
 ```
 
-2. Single-GPU inference for ablation study
+2. Inference for ablation study
 
 ```bash
 bash scripts/v1_5/eval/cot_benchmark_ablations.sh UV-CoT
