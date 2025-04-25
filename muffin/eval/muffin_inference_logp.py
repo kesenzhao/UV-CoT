@@ -15,10 +15,7 @@ from muffin.train.train_utils import encode_multimodal_preference_sample, SFT_co
 def bytes_to_PIL_image(img_buffer):
     img_io = io.BytesIO(img_buffer)
     img_io.seek(0)
-    # print('img_io:', img_io)
-    # print('img_buffer:', img_buffer)
     image = PIL_image.open(img_io).convert('RGB')
-
     return image
 
 def get_batch_logps_minicpm(logits: torch.FloatTensor, labels: torch.LongTensor, return_per_token_logp=False, return_all=False) -> torch.FloatTensor:
@@ -117,72 +114,6 @@ def get_batch_logps(logits: torch.FloatTensor, labels: torch.LongTensor, return_
 
     return log_prob, average_log_prob
 
-
-
-def compute_cross_similarity_matrix(scaled_similarity, token_types):
-    batch_size, seq_len, _ = scaled_similarity.shape
-    text_mask = token_types == 0  # [batch_size, seq_len]
-    image_mask = token_types == 1  # [batch_size, seq_len]
-    text_indices = text_mask.unsqueeze(1).expand(-1, seq_len, -1)  # [batch_size, seq_len, seq_len]
-    image_indices = image_mask.unsqueeze(2).expand(-1, seq_len, -1)  # [batch_size, seq_len, seq_len]
-
-    cross_similarity_scores = (scaled_similarity * image_indices * text_indices).sum(dim=-1)  # [batch_size, seq_len]
-
-    image_token_indices = image_mask.nonzero(as_tuple=True) 
-
-    image_cross_similarity_scores = cross_similarity_scores[image_token_indices].view(batch_size, -1)   # [batch_size, image_token_num]  
-    return image_cross_similarity_scores
-
-
-
-def get_batch_logps_cot(logits: torch.FloatTensor, labels: torch.LongTensor, CoT_labels, token_types, return_per_token_logp=False, return_all=False, tokenizer=None) -> torch.FloatTensor:
-    """Compute the log probabilities of the given labels under the given logits.
-
-    Args:
-        logits: Logits of the model (unnormalized). Shape: (batch_size, sequence_length, vocab_size)
-        labels: Labels for which to compute the log probabilities. Label tokens with a value of -100 are ignored. Shape: (batch_size, sequence_length)
-    Returns:
-        A tensor of shape (batch_size,) containing the average/sum log probabilities of the given labels under the given logits.
-    """
-    assert logits.shape[:-1] == labels.shape, f'logits.shape[:-1]={logits.shape[:-1]}, labels.shape={labels.shape}'
-    # print('shape:', logits.shape, labels.shape)
-    labels = labels[:, 1:].clone()
-    token_types = token_types[:, 1:].clone()
-    logits = logits[:, :-1, :]
-    loss_mask = (labels != -100)
-
-    # dummy token; we'll ignore the losses on these tokens later
-    labels[labels == -100] = 0
-    per_token_logps = torch.gather(logits.log_softmax(-1), dim=2,
-                                   index=labels.unsqueeze(2)).squeeze(2)
-
-    log_prob = (per_token_logps * loss_mask).sum(-1)
-    average_log_prob = log_prob / loss_mask.sum(-1)
-    # CoT logp
-    similarity_scores = torch.matmul(logits, logits.transpose(-1, -2))
-    d_k = logits.shape[-1]
-    scaled_similarity = similarity_scores / torch.sqrt(torch.tensor(d_k, dtype=torch.float32)) 
-    
-    cross_similarity_scores = compute_cross_similarity_matrix(scaled_similarity, token_types)
-    # print(cross_similarity_scores)
-    cross_similarity_scores = cross_similarity_scores.unsqueeze(1).expand(-1, CoT_labels.shape[-1], -1)
-    
-    # type1
-    per_token_logps_cot = torch.gather(cross_similarity_scores.log_softmax(-1), dim=2,
-                                   index=CoT_labels.unsqueeze(2)).squeeze(2)
-    log_prob_cot = per_token_logps_cot.sum(-1)
-    average_log_prob_cot = log_prob_cot / CoT_labels.shape[-1]
- 
-
-    if return_per_token_logp:
-        return per_token_logps
-
-    if return_all:
-        return per_token_logps, log_prob, average_log_prob, log_prob_cot, average_log_prob_cot
-
-    return log_prob, average_log_prob, log_prob_cot, average_log_prob_cot
-
-
 class PreferenceInferenceDataset(torch_data.Dataset):
     def __init__(self,
                  data,
@@ -213,9 +144,7 @@ class PreferenceInferenceDataset(torch_data.Dataset):
         question = {'from': 'human', 'value': f"<image>\n{sample['question']}"}
         chosen = {'from': 'gpt', 'value': sample['chosen']}
         rejected = {'from': 'gpt', 'value': sample['rejected']}
-        if not sample['image']['bytes']:
-            with open(sample['image']['path'], 'rb') as f:
-                sample['image']['bytes'] = f.read()
+
         image = bytes_to_PIL_image(sample['image']['bytes'])
 
         formated_sample = {
@@ -224,9 +153,7 @@ class PreferenceInferenceDataset(torch_data.Dataset):
             "chosen": chosen,
             "rejected": rejected,
             "idx": sample['idx'],
-            "metainfo": metainfo,
-            'ch_bbox': sample['ch_bbox'],
-            'rej_bbox': sample['rej_bbox']
+            "metainfo": metainfo
         }
         preprocess_func= partial(preprocess_v1, has_image=True)
         rej_data_dict, win_data_dict = encode_multimodal_preference_sample(
@@ -257,38 +184,6 @@ def concate_pad(tensorA, tensorB, padding_value):
         padding_value=padding_value)
     return out
 
-
-import numpy as np
-
-
-def convert_region_to_token_coords(batch_best_regions, H, W):
-    batch_best_token_coords = []
-
-    if isinstance(batch_best_regions, torch.Tensor):
-        batch_best_regions = batch_best_regions.detach().cpu().numpy()
-    
-    for region in batch_best_regions:
-        x1, y1, x2, y2 = region
-        
-    
-        x1, x2 = int(x1 * H), int(x2 * H) 
-        y1, y2 = int(y1 * W), int(y2 * W) 
-        
-
-        region_token_coords = []
-        for i in range(x1, x2):
-            for j in range(y1, y2):
-                one_d_token_index = i * W + j
-                region_token_coords.append(one_d_token_index)
-        
-        batch_best_token_coords.append(torch.tensor(region_token_coords, dtype=torch.long))
-
-
-    batch_best_token_coords = torch.nn.utils.rnn.pad_sequence(batch_best_token_coords, batch_first=True, padding_value=-1)
-
-    return batch_best_token_coords
-
-
 def preference_collator_fn(instances, pad_token_id):
     rej_instances, win_instances = list(zip(*instances))
     rej_batch = SFT_collator_fn(rej_instances, pad_token_id)
@@ -297,27 +192,18 @@ def preference_collator_fn(instances, pad_token_id):
     concatenated_input_ids = concate_pad(win_batch['input_ids'], rej_batch['input_ids'], pad_token_id)
     concatenated_labels = concate_pad(win_batch['labels'], rej_batch['labels'], -100)
     concatenated_attention_mask = concatenated_input_ids.ne(pad_token_id)
-    win_cot_regions = win_batch['bbox']
-    win_cot_label = convert_region_to_token_coords(win_cot_regions, 24, 24)
-    rej_cot_regions = rej_batch['bbox']
-    rej_cot_label = convert_region_to_token_coords(rej_cot_regions, 24, 24)
-    concatenated_cot_labels = torch.cat((win_cot_label, rej_cot_label), dim=0)
-    
+
     batch = dict(
         concatenated_input_ids=concatenated_input_ids,
         concatenated_labels=concatenated_labels,
-        concatenated_cot_labels=concatenated_cot_labels,
         concatenated_attention_mask=concatenated_attention_mask,
         win_input_ids=win_batch['input_ids'],
         rej_input_ids=rej_batch['input_ids'],
         win_labels=win_batch['labels'],
         rej_labels=rej_batch['labels'],
-        win_labels_cot=win_cot_label,
-        rej_labels_cot=rej_cot_label,
         win_attention_mask=win_batch['attention_mask'],
         rej_attention_mask=rej_batch['attention_mask'],
-        ch_images=win_batch['images'],
-        rej_images=rej_batch['images'],
+        images=win_batch['images'],
     )
     return batch
 
@@ -327,9 +213,6 @@ def preference_collator_fn(instances, pad_token_id):
 def get_multimodal_sample_logps(model, dataloader, tokenizer, is_llava15=False):
     win_logp_list = []
     rej_logp_list = []
-
-    win_logp_list_cot = []
-    rej_logp_list_cot = []
 
     win_avg_logp_list = []
     rej_avg_logp_list = []
@@ -346,11 +229,6 @@ def get_multimodal_sample_logps(model, dataloader, tokenizer, is_llava15=False):
                 # print(tokens)
                 labels = batch[f'{key}_labels'].cuda()
                 attention_mask = batch[f'{key}_attention_mask'].cuda()
-                CoT_labels = batch[f'{key}_labels_cot'].cuda()
-                if key == 'win':
-                    images = batch['ch_images']
-                else:
-                    images = batch['rej_images']
 
                 if is_llava15:
                     # print("is llava15")
@@ -360,15 +238,14 @@ def get_multimodal_sample_logps(model, dataloader, tokenizer, is_llava15=False):
                         _,
                         _,
                         inputs_embeds,
-                        labels,
-                        token_types
-                    ) = model.prepare_cot_inputs_labels_for_multimodal(
+                        labels
+                    ) = model.prepare_inputs_labels_for_multimodal(
                         input_ids=input_ids,
                         position_ids=None,
                         attention_mask=None,
                         past_key_values=None,
                         labels=labels,
-                        images=images.to(dtype=torch.bfloat16, device='cuda'),
+                        images=batch['images'].to(dtype=torch.bfloat16, device='cuda'),
                     )
                     output = model.forward(
                         inputs_embeds=inputs_embeds,
@@ -379,31 +256,28 @@ def get_multimodal_sample_logps(model, dataloader, tokenizer, is_llava15=False):
                         input_ids=input_ids,
                         labels=labels,
                         attention_mask=attention_mask,
-                        images=images.to(dtype=torch.bfloat16, device='cuda'),
+                        images=batch['images'].to(dtype=torch.bfloat16, device='cuda'),
                     )
-                per_token_logp, log_prob, average_log_prob, log_prob_cot, average_log_prob_cot = get_batch_logps_cot(output.logits, labels, CoT_labels, token_types, return_all=True)
+                per_token_logp, log_prob, average_log_prob = get_batch_logps(output.logits, labels, return_all=True)
 
                 # print(per_token_logp.shape, input_ids.shape, labels.shape, flush=True)
                 assert per_token_logp.size(1) >= input_ids.size(1) - 1
                 per_token_logp = per_token_logp.tolist()
                 # per_token_logp = [x[:input_ids[i].ne(tokenizer.pad_token_id).sum().item()] for i, x in enumerate(per_token_logp)]
                 log_prob = log_prob.tolist()
-                log_prob_cot = log_prob_cot.tolist()
                 average_log_prob = average_log_prob.tolist()
 
                 if key == 'win':
                     win_logp_list += log_prob
                     win_avg_logp_list += average_log_prob
                     win_per_token_logp_list += per_token_logp
-                    win_logp_list_cot += log_prob_cot
                 else:
                     rej_logp_list += log_prob
                     rej_avg_logp_list += average_log_prob
                     rej_per_token_logp_list += per_token_logp
-                    rej_logp_list_cot += log_prob_cot
             # print(f'{key} logits in {output.logits.shape}, logp in {log_prob.shape} avg_logp in {average_log_prob.shape}', flush=True)
 
-    return win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list, win_logp_list_cot, rej_logp_list_cot
+    return win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list
 
 
 def write_logp_to_preference_parquet(origin_data, cache_file, logps, overwrite_logps=False):
@@ -460,39 +334,8 @@ def inference_logp(model, tokenizer, hf_data, cache_file, image_token_len, img_p
 
     win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list \
         = merged_outputs
-    
+
     logps = list(zip(win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list))
-
-    write_logp_to_preference_parquet(dataset.data, cache_file, logps, overwrite_logps=False)
-
-    torch.distributed.barrier()
-
-    del model
-
-def inference_logp_cot(model, tokenizer, hf_data, cache_file, image_token_len, img_processor, use_im_start_end, is_llava15=False):
-    model = model.to(dtype=torch.bfloat16, device='cuda')
-    dataset = PreferenceInferenceDataset(tokenizer=tokenizer,
-                                    data = hf_data,
-                                    image_token_len=image_token_len,
-                                    img_processor=img_processor,
-                                    use_im_start_end=use_im_start_end)
-    collate_fn = partial(preference_collator_fn, pad_token_id=tokenizer.pad_token_id)
-    dataloader = torch_data.DataLoader(dataset, batch_size=1, collate_fn=collate_fn,
-                                       num_workers=5, shuffle=False, sampler=InferenceSampler(len(dataset)))
-
-    outputs = get_multimodal_sample_logps(model, dataloader, tokenizer, is_llava15=is_llava15) # win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list
-
-    world_size = torch.distributed.get_world_size()
-    merged_outputs = [[None for _ in range(world_size)] for i in range(len(outputs))]
-    for i in range(len(outputs)):
-        torch.distributed.all_gather_object(merged_outputs[i], outputs[i])
-        merged_outputs[i] = [_ for _ in itertools.chain.from_iterable(merged_outputs[i])]
-
-
-    win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list, win_logp_list_cot, rej_logp_list_cot \
-        = merged_outputs
-
-    logps = list(zip(win_logp_list, win_avg_logp_list, win_per_token_logp_list, rej_logp_list, rej_avg_logp_list, rej_per_token_logp_list, win_logp_list_cot, rej_logp_list_cot))
 
     write_logp_to_preference_parquet(dataset.data, cache_file, logps, overwrite_logps=False)
 

@@ -82,7 +82,7 @@ def get_facts(result):
     return fact_list
 
 def init_divide_pipline():
-    model_id = "/data/apps/RLAIF-V/rlaif-v-main/models/llama3-split"
+    model_id = "/home/kesen/RLAIF-V/models/llama3_split"
     tokenizer = (model_id, {'padding_side': 'left'})
     pipeline = transformers.pipeline(
         "text-generation",
@@ -95,7 +95,7 @@ def init_divide_pipline():
 
 
 def init_changeq_pipline():
-    model_id = "/data/apps/RLAIF-V/rlaif-v-main/models/llama3-changeq"
+    model_id = "/home/kesen/RLAIF-V/models/llama3_changeq"
     tokenizer = (model_id, {'padding_side': 'left'})
     pipeline = transformers.pipeline(
         "text-generation",
@@ -204,7 +204,7 @@ def wrap_prompt_divide_to_list(item):
         question = item['question']
     answer = item['answer'] if 'answer' in item.keys() else item['text']
 
-    content="You are an expert in extracting facts from the given question-answer pair for an image. Your task is to extract and rewrite the facts mentioned in the question-answer pair into self-contained sentences. Exclude opinions or subjective statements.\n\nYou should present your result in the following format:\n### Facts:\n- {Extracted fact 1}\n- {Extracted fact 2}\n- ...\n\n### Question-answer pair:\nQuestion: " + question + "\nAnswer: " + answer
+    content="You are an expert in extracting facts from the given question-answer pair for an image. Your task is to extract and rewrite the facts mentioned in the question-answer pair into self-contained sentences. Exclude opinions or subjective statements.\n\nYou should present your result in the following format:\n### Facts:\n- {Extracted fact 1}\n- {Extracted fact 2}\n- ...\n\n### Question-answer pair:\nQuestion: " + question + "\nAnswer: " + item['metainfos']["answers"] + "\nQuestion: " + "Please answer the question based on the original image and local detail image." + question.split(' Please provide the bounding box coordinate of the region')[0] + "\nAnswer: " + answer 
     temp_input = ' '.join(content.split(' ')[:300])
 
     messages = [{"role": "user", "content": temp_input},]

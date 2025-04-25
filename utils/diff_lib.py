@@ -46,6 +46,8 @@ class Colors:
 
 
 def split_into_clauses(text):
+    # 使用正则表达式将文本分割成子句
+    # 这个正则表达式匹配句点、感叹号和问号，并且这些符号后面是空格、换行符或文本的末尾
     clauses = re.split(r'(?<=[.!?,;(.")(!")(,")(?")])\s+', text)
     return clauses
 

@@ -15,7 +15,7 @@ from torch import Tensor
 from torch.nn import Module
 from utils.utils import is_main_process
 
-from muffin.eval.muffin_inference_logp import get_batch_logps, get_batch_logps_minicpm, get_batch_logps_cot
+from muffin.eval.muffin_inference_logp import get_batch_logps, get_batch_logps_minicpm
 
 
 class ChunckedRandomSampler(Sampler[int]):
@@ -49,6 +49,19 @@ class ZephyrTrainer(Trainer):
 
         # Build the sampler.
         return RandomSampler(self.train_dataset)
+        # return SequentialSampler(self.train_dataset)
+
+        # if self.args.group_by_length:
+        #     assert NotImplementedError
+        # else:
+        #     if len(self.train_dataset) >= 50_000_000:
+        #         return ChunckedRandomSampler(self.train_dataset)
+        #     else:
+        #         # print(f'Data set size is :{len(self.train_dataset)}', flush=True)
+        #         # return SequentialSampler(self.train_dataset)
+
+        #         print(f'Shuffle Data set size is :{len(self.train_dataset)}', flush=True)
+        #         return RandomSampler(self.train_dataset)
 
 def forward_DPO(model, input_ids, labels, attention_mask, images, **kwargs):
     token_weighted = kwargs.pop('token_weighted', False)
@@ -128,7 +141,7 @@ def collect_preference_metrics(metrics, task,
                                chosen_rewards, rejected_rewards,
                                policy_rej_logp, policy_win_logp,
                                ref_rej_logp, ref_win_logp, reward_accuracies,
-                               preprocess_func,  CoT_chosen_rewards, CoT_rejected_rewards, CoT_reward_accuracies
+                               preprocess_func,
                                ):
     t = task
     metrics = {}
@@ -138,15 +151,8 @@ def collect_preference_metrics(metrics, task,
     metrics[f'logps_{t}/chosen'] = preprocess_func(policy_win_logp)
     metrics[f'logps_{t}/ref_rejected'] = preprocess_func(ref_rej_logp)
     metrics[f'logps_{t}/ref_chosen'] = preprocess_func(ref_win_logp)
-
     metrics[f'rewards_{t}/accuracies'] = preprocess_func(
         reward_accuracies)
-
-    metrics[f'rewards_{t}/chosen_cot'] = preprocess_func(CoT_chosen_rewards)
-    metrics[f'rewards_{t}/rejected_cot'] = preprocess_func(CoT_rejected_rewards)
-    metrics[f'rewards_{t}/accuracies_cot'] = preprocess_func(
-        CoT_reward_accuracies)
-
     metrics[f'rewards_{t}/margins'] = metrics[f'rewards_{t}/chosen'] - \
         metrics[f'rewards_{t}/rejected']
     return metrics
@@ -174,9 +180,14 @@ def get_beta_and_logps(data_dict, model, args, is_minicpm=False, is_llava15=Fals
 
     beta = data_dict.pop('beta')
     if args.task == 'DPO':
-        win_images = data_dict.pop('ch_images')
-        rej_images = data_dict.pop('rej_images')
-        concatenated_images = torch.cat([win_images, rej_images], dim=0)
+        images = data_dict.pop('images')
+        if is_minicpm:
+            # print(data_dict.keys())
+            data_dict.pop('win_context_ids')
+            data_dict.pop('rej_context_ids')
+            concatenated_images = images
+        else:
+            concatenated_images = torch.cat([images, images], dim=0)
     elif args.task == 'KTO':
         win_images = data_dict.pop('win_images')
         rej_images = data_dict.pop('rej_images')
@@ -192,38 +203,21 @@ def get_beta_and_logps(data_dict, model, args, is_minicpm=False, is_llava15=Fals
     concatenated_token_weight = data_dict.pop('concatenated_token_weight')
 
     if is_llava15:
-        if args.lora_enable:
-            (
-                _,
-                _,
-                _,
-                _,
-                concatenated_inputs_embeds,
-                concatenated_labels
-            ) = model.module.prepare_inputs_labels_for_multimodal(
-                input_ids=concatenated_input_ids,
-                position_ids=None,
-                attention_mask=None,
-                past_key_values=None,
-                labels=concatenated_labels,
-                images=concatenated_images,
-            )
-        else:
-            (
-                _,
-                _,
-                _,
-                _,
-                concatenated_inputs_embeds,
-                concatenated_labels
-            ) = model.prepare_inputs_labels_for_multimodal(
-                input_ids=concatenated_input_ids,
-                position_ids=None,
-                attention_mask=None,
-                past_key_values=None,
-                labels=concatenated_labels,
-                images=concatenated_images,
-            )
+        (
+            _,
+            _,
+            _,
+            _,
+            concatenated_inputs_embeds,
+            concatenated_labels
+        ) = model.prepare_inputs_labels_for_multimodal(
+            input_ids=concatenated_input_ids,
+            position_ids=None,
+            attention_mask=None,
+            past_key_values=None,
+            labels=concatenated_labels,
+            images=concatenated_images,
+        )
         output = model.forward(
             inputs_embeds=concatenated_inputs_embeds,
             labels=None,
@@ -252,6 +246,13 @@ def get_beta_and_logps(data_dict, model, args, is_minicpm=False, is_llava15=Fals
     if args.dpo_token_weighted:
         if is_llava15:
             raise NotImplementedError
+        # print(f'compute_loss win {win_input_ids.shape} {win_labels.shape} {ref_win_per_token_logp.shape} {win_token_weight.shape}', flush=True)
+        # print(f'compute_loss rej {rej_input_ids.shape} {rej_labels.shape} {ref_rej_per_token_logp.shape} {rej_token_weight.shape}', flush=True)
+        # print(f'compute_loss cat {concatenated_input_ids.shape} {concatenated_labels.shape} {concatenated_logp.shape} {concatenated_token_weight.shape}', flush=True)
+
+        # for i in range(len(ref_win_per_token_logp)):
+        #     print(f'compuate loss {i} win_input_ids={win_input_ids[i]}\nwin_labels={win_labels[i]}\nwin_per_token_logp={ref_win_per_token_logp[i]}\nwin_token_weight={win_token_weight[i]}\n', flush=True)
+        #     print(f'compuate loss {i} rej_input_ids={rej_input_ids[i]}\nrej_labels={rej_labels[i]}\nrej_per_token_logp={ref_rej_per_token_logp[i]}\nrej_token_weight={rej_token_weight[i]}\n', flush=True)
         ref_win_logp = compute_weighted_logp(
             ref_win_per_token_logp, win_labels, win_token_weight, args.dpo_use_average)
         ref_rej_logp = compute_weighted_logp(
@@ -274,143 +275,6 @@ def get_beta_and_logps(data_dict, model, args, is_minicpm=False, is_llava15=Fals
     return policy_win_logp, policy_rej_logp, ref_win_logp, ref_rej_logp, beta
 
 
-def get_beta_and_logps_cot(data_dict, model, args, is_minicpm=False, is_llava15=False):
-    win_input_ids = data_dict.pop('win_input_ids')
-    rej_input_ids = data_dict.pop('rej_input_ids')
-
-    win_labels = data_dict.pop('win_labels')
-    rej_labels = data_dict.pop('rej_labels')
-    win_labels_cot = data_dict.pop('win_labels_cot')
-    rej_labels_cot = data_dict.pop('rej_labels_cot')
-
-    win_attention_mask = data_dict.pop('win_attention_mask')
-    rej_attention_mask = data_dict.pop('rej_attention_mask')
-
-    ref_win_avg_logp = data_dict.pop('ref_win_avg_logp')
-    ref_rej_avg_logp = data_dict.pop('ref_rej_avg_logp')
-    ref_win_logp = data_dict.pop('ref_win_logp')
-    ref_rej_logp = data_dict.pop('ref_rej_logp')
-    ref_win_logp_cot = data_dict.pop('ref_win_logp_cot')
-    ref_rej_logp_cot = data_dict.pop('ref_rej_logp_cot')
-    ref_win_per_token_logp = data_dict.pop('ref_win_per_token_logp')
-    ref_rej_per_token_logp = data_dict.pop('ref_rej_per_token_logp')
-    if args.dpo_use_average:
-        ref_win_logp = ref_win_avg_logp
-        ref_rej_logp = ref_rej_avg_logp
-
-    beta = data_dict.pop('beta')
-    if args.task == 'DPO':
-        ch_images = data_dict.pop('ch_images')
-        rej_images = data_dict.pop('rej_images')
-        if is_minicpm:
-            data_dict.pop('win_context_ids')
-            data_dict.pop('rej_context_ids')
-            concatenated_images = ch_images
-        else:
-            concatenated_images = torch.cat([ch_images, rej_images], dim=0)
-    elif args.task == 'KTO':
-        win_images = data_dict.pop('win_images')
-        rej_images = data_dict.pop('rej_images')
-        concatenated_images = torch.cat([win_images, rej_images], dim=0)
-
-    concatenated_input_ids = data_dict.pop('concatenated_input_ids')
-    concatenated_labels = data_dict.pop('concatenated_labels')
-    concatenated_cot_labels = data_dict.pop('concatenated_cot_labels')
-    concatenated_attention_mask = data_dict.pop('concatenated_attention_mask')
-    concatenated_attention_mask = None
-
-    win_token_weight = data_dict.pop('win_token_weight')
-    rej_token_weight = data_dict.pop('rej_token_weight')
-    concatenated_token_weight = data_dict.pop('concatenated_token_weight')
-
-    if is_llava15:
-        if args.lora_enable:
-            (
-                _,
-                _,
-                _,
-                _,
-                concatenated_inputs_embeds,
-                concatenated_labels,
-                token_types
-            ) = model.module.prepare_cot_inputs_labels_for_multimodal(
-                input_ids=concatenated_input_ids,
-                position_ids=None,
-                attention_mask=None,
-                past_key_values=None,
-                labels=concatenated_labels,
-                images=concatenated_images,
-            )
-        else:
-            (
-                _,
-                _,
-                _,
-                _,
-                concatenated_inputs_embeds,
-                concatenated_labels,
-                token_types
-            ) = model.prepare_cot_inputs_labels_for_multimodal(
-                input_ids=concatenated_input_ids,
-                position_ids=None,
-                attention_mask=None,
-                past_key_values=None,
-                labels=concatenated_labels,
-                images=concatenated_images,
-            )
-        output = model.forward(
-            inputs_embeds=concatenated_inputs_embeds,
-            labels=None,
-            **data_dict,
-        )
-        log_prob, average_log_prob, log_prob_cot, average_log_prob_cot = get_batch_logps_cot(
-            output.logits, concatenated_labels, concatenated_cot_labels, token_types, return_per_token_logp=False)
-
-        if args.dpo_use_average:
-            concatenated_logp = average_log_prob
-        else:
-            concatenated_logp =log_prob
-        concatenated_cot_logp = average_log_prob_cot
-    else:
-        concatenated_logp = forward_DPO(model,
-                                        concatenated_input_ids,
-                                        concatenated_labels,
-                                        concatenated_attention_mask,
-                                        concatenated_images,
-                                        token_weighted=args.dpo_token_weighted,
-                                        dpo_use_average=args.dpo_use_average,
-                                        is_minicpm=is_minicpm,
-                                        **data_dict)
-    win_size = win_input_ids.shape[0]
-    rej_size = rej_input_ids.shape[0]
-    assert win_size == rej_size
-
-    if args.dpo_token_weighted:
-        if is_llava15:
-            raise NotImplementedError
-        ref_win_logp = compute_weighted_logp(
-            ref_win_per_token_logp, win_labels, win_token_weight, args.dpo_use_average)
-        ref_rej_logp = compute_weighted_logp(
-            ref_rej_per_token_logp, rej_labels, rej_token_weight, args.dpo_use_average)
-        concatenated_logp = compute_weighted_logp(
-            concatenated_logp, concatenated_labels, concatenated_token_weight, args.dpo_use_average)
-    
-        if torch.any(torch.isnan(ref_win_logp)):
-            print(f'ref_win_logp fail', flush=True)
-            exit()
-        if torch.any(torch.isnan(ref_rej_logp)):
-            print(f'ref_rej_logp fail', flush=True)
-            exit()
-        if torch.any(torch.isnan(concatenated_logp)):
-            print(f'concatenated_logp fail', flush=True)
-            exit()
-
-    policy_win_logp, policy_rej_logp = concatenated_logp.split(
-        [win_size, rej_size])
-    policy_win_logp_cot, policy_rej_logp_cot = concatenated_cot_logp.split(
-        [win_size, rej_size])
-    return policy_win_logp, policy_rej_logp, ref_win_logp, ref_rej_logp, policy_win_logp_cot, policy_rej_logp_cot, ref_win_logp_cot, ref_rej_logp_cot, beta
-
 
 class LLaVA15DPOTrainer(ZephyrTrainer):
 
@@ -420,8 +284,9 @@ class LLaVA15DPOTrainer(ZephyrTrainer):
 
         def gather_and_do_mean(x):
             return self._nested_gather(x.mean()).mean().item()
+
         data_dict = inputs
-        policy_win_logp, policy_rej_logp, ref_win_logp, ref_rej_logp, policy_win_logp_cot, policy_rej_logp_cot, ref_win_logp_cot, ref_rej_logp_cot, beta = get_beta_and_logps_cot(
+        policy_win_logp, policy_rej_logp, ref_win_logp, ref_rej_logp, beta = get_beta_and_logps(
             data_dict, model, self.args, is_llava15=True)
 
         losses, chosen_rewards, rejected_rewards = dpo_loss(policy_win_logp,
@@ -429,29 +294,18 @@ class LLaVA15DPOTrainer(ZephyrTrainer):
                                                             ref_win_logp,
                                                             ref_rej_logp,
                                                             beta=beta)
-        
-        CoT_losses, CoT_chosen_rewards, CoT_rejected_rewards = dpo_loss(policy_win_logp_cot,
-                                                            policy_rej_logp_cot,
-                                                            ref_win_logp_cot,
-                                                            ref_rej_logp_cot,
-                                                            beta=beta)
-
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
-        CoT_reward_accuracies = (CoT_chosen_rewards > CoT_rejected_rewards).float()
 
-        SFT_weight = float(os.environ.get('SFT_weight', 0.7))
-        # DPO_weight = float(os.environ.get('DPO_weight', 1.0))
-        DPO_weight = float(os.environ.get('DPO_weight', 0.2))
-        CoT_weight = float(os.environ.get('DPO_weight', 0.1))
-        # print(losses.mean(), CoT_losses.mean())
-        loss = DPO_weight * losses.mean() - SFT_weight * policy_win_logp.mean() + CoT_weight * CoT_losses.mean()
+        SFT_weight = float(os.environ.get('SFT_weight', 0.0))
+        DPO_weight = float(os.environ.get('DPO_weight', 1.0))
+        loss = DPO_weight * losses.mean() - SFT_weight * policy_win_logp.mean()
 
         t = 'train' if model.training else 'test'
         metrics = {}
         metrics = collect_preference_metrics(metrics, t, chosen_rewards, rejected_rewards,
                                              policy_rej_logp, policy_win_logp,
                                              ref_rej_logp, ref_win_logp, reward_accuracies,
-                                             gather_and_do_mean, CoT_chosen_rewards, CoT_rejected_rewards, CoT_reward_accuracies)
+                                             gather_and_do_mean)
         self.log(metrics)
 
         return loss
