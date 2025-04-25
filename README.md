@@ -56,6 +56,9 @@ If you want to use self-evaluated method , please refer to:
 bash ./script/data_gen/run_data_pipeline_llava15_self_evaluated.sh
 ```
 
+3. A Toy Example
+
+We provide a toy example in the folder cot_one. Process your instruction set into the same format before generating the preference data.
 
 
 
