@@ -1,8 +1,9 @@
 # UV-CoT
 
 ## Links
-1. Project page: https://kesenzhao.github.io/my_project/projects/UV-CoT.html
-2. Huggingface page: https://huggingface.co/kesenZhaoNTU/UV-CoT
+1. Project page: [link](https://kesenzhao.github.io/my_project/projects/UV-CoT.html
+)
+2. We have released the pretrained checkpoint of UV-CoT at our Hugging Face page: [link](https://huggingface.co/kesenZhaoNTU/UV-CoT)
 
 ## Install
 
