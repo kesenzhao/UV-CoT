@@ -70,8 +70,6 @@ We provide a toy example in the folder cot_one. Process your instruction set int
 
 1. Prepare data
 
-We also prepare the image file in this [link](https://huggingface.co/datasets/deepcs233/Visual-CoT/tree/main/cot_with_detailed_reasoning_steps), you need to merge these split archive files and then extract them.
-
 
 - COCO: [train2017](http://images.cocodataset.org/zips/train2017.zip) [train2014](http://images.cocodataset.org/zips/train2014.zip)
 
