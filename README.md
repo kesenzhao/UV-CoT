@@ -3,7 +3,7 @@
 ## Links
 1. Project page: [link](https://kesenzhao.github.io/my_project/projects/UV-CoT.html
 )
-2. We have released the pretrained checkpoint of UV-CoT at our Hugging Face page: [link](https://huggingface.co/kesenZhaoNTU/UV-CoT)
+2. We have released the checkpoint of UV-CoT at our Hugging Face page: [link](https://huggingface.co/kesenZhaoNTU/UV-CoT)
 
 ## Install
 
