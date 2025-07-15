@@ -1,5 +1,8 @@
 # UV-CoT
 
+## Links
+1. Project page: https://kesenzhao.github.io/my_project/projects/UV-CoT.html
+2. Huggingface page: https://huggingface.co/kesenZhaoNTU/UV-CoT
 
 ## Install
 
