@@ -1,9 +1,13 @@
-# UV-CoT
+# UV-CoT: unsupervised Visual Chain-of-Thought Reasoning via Preference Optimization
 
 ## Links
 1. Project page: [link](https://kesenzhao.github.io/my_project/projects/UV-CoT.html
 )
 2. We have released the checkpoint of UV-CoT at our Hugging Face page: [link](https://huggingface.co/kesenZhaoNTU/UV-CoT)
+
+## Overview
+
+ [fig1_v4.0.pdf](./images/fig1_v4.0.pdf) 
 
 ## Install
 
@@ -175,3 +179,30 @@ bash scripts/v1_5/eval/cot_benchmark_ablations.sh UV-CoT
 bash scripts/v1_5/eval/cot_score.sh UV-CoT
 ```
 
+
+
+## Visualization
+
+ [fig5_v1.2.pdf](./images/fig5_v1.2.pdf) 
+
+ [fig6_v1.2.pdf](./images/fig6_v1.2.pdf) 
+
+
+
+## Citation
+
+If our work assists your research, feel free to give us a star ⭐ or cite us using:
+
+```
+@misc{zhao2025unsupervisedvisualchainofthoughtreasoning,
+      title={Unsupervised Visual Chain-of-Thought Reasoning via Preference Optimization}, 
+      author={Kesen Zhao and Beier Zhu and Qianru Sun and Hanwang Zhang},
+      year={2025},
+      eprint={2504.18397},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2504.18397}, 
+}
+```
+
+## 
