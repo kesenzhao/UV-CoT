@@ -38,10 +38,10 @@ class RLAIFVDataset(torch_data.Dataset):
         if len(data_path) == 0:
             assert reference_model is not None, "`reference_model` is mandatory when logps do not exist."
 
-            if not op.exists('./RLAIF-V-Dataset'):
-                os.mkdir('./RLAIF-V-Dataset')
-            hf_data = hf_datasets.load_dataset('openbmb/RLAIF-V-Dataset', cache_dir='./RLAIF-V-Dataset')['train'].cast_column("image", hf_datasets.Image(decode=False))
-
+            if not op.exists('./rlhf_result_100k_next'):
+                os.mkdir('./rlhf_result_100k_next')
+            # hf_data = hf_datasets.load_dataset('openbmb/RLAIF-V-Dataset', cache_dir='./RLAIF-V-Dataset')['train'].cast_column("image", hf_datasets.Image(decode=False))
+            hf_data = hf_datasets.load_dataset('./rlhf_result_100k_next')['train'].cast_column("image", hf_datasets.Image(decode=False))
             inference_logp(reference_model, tokenizer, hf_data, self.data_path,
                             image_token_len, img_processor, use_im_start_end, is_llava15=is_llava15)
 
@@ -61,7 +61,9 @@ class RLAIFVDataset(torch_data.Dataset):
         question = {'from': 'human', 'value': f"<image>\n{sample['question']}"}
         chosen = {'from': 'gpt', 'value': sample['chosen']}
         rejected = {'from': 'gpt', 'value': sample['rejected']}
-
+        if not sample['image']['bytes']:
+            with open(sample['image']['path'], 'rb') as f:
+                sample['image']['bytes'] = f.read()
         image = bytes_to_PIL_image(sample['image']['bytes'])
 
         metainfo = {
