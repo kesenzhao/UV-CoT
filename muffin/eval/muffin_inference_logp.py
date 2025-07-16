@@ -144,7 +144,9 @@ class PreferenceInferenceDataset(torch_data.Dataset):
         question = {'from': 'human', 'value': f"<image>\n{sample['question']}"}
         chosen = {'from': 'gpt', 'value': sample['chosen']}
         rejected = {'from': 'gpt', 'value': sample['rejected']}
-
+        if not sample['image']['bytes']:
+            with open(sample['image']['path'], 'rb') as f:
+                sample['image']['bytes'] = f.read()
         image = bytes_to_PIL_image(sample['image']['bytes'])
 
         formated_sample = {
