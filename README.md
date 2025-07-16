@@ -9,6 +9,14 @@
 
 ![Figure 1: UV‑CoT Overview](./images/fig1.svg) 
 
+
+## Visualization
+
+ ![fig5_v1.2.pdf](./images/fig5_v1.2.svg) 
+
+ ![fig6_v1.2.pdf](./images/fig6_v1.2.svg) 
+
+
 ## Install
 
 1. Clone this repository and navigate to UV-CoT folder or download the code.
@@ -179,13 +187,6 @@ bash scripts/v1_5/eval/cot_benchmark_ablations.sh UV-CoT
 bash scripts/v1_5/eval/cot_score.sh UV-CoT
 ```
 
-
-
-## Visualization
-
- ![fig5_v1.2.pdf](./images/fig5_v1.2.svg) 
-
- ![fig6_v1.2.pdf](./images/fig6_v1.2.svg) 
 
 
 
