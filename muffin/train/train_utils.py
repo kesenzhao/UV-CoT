@@ -14,7 +14,8 @@ import numpy as np
 from typing import Dict, Optional, Sequence
 from muffin import conversation as conversation_lib
 from packaging import version
-
+import re 
+SUBIMAGE_PATTERN = r".*\#\#\#\[([\d\.]+),\s*([\d\.]+),\s*([\d\.]+),\s*([\d\.]+)\]"
 
 IS_TOKENIZER_GREATER_THAN_0_14 = version.parse(tokenizers.__version__) >= version.parse('0.14')
 IMAGE_TOKEN_INDEX = -200 # from llava 1.5, used to determin image in forward function
@@ -73,7 +74,7 @@ def SFT_collator_fn(instances, pad_token_id):
     if len(images) > 0:
         # possibly multi-image for each sample
         if len(images[0].shape) == 4:
-            batch['images'] = images
+            batch['images'] = torch.stack(images)
         elif all(x is not None and x.shape == images[0].shape for x in images):
             import numpy
             if isinstance(images[0], numpy.ndarray):
@@ -203,9 +204,83 @@ def encode_multimodal_preference_sample(source, tokenizer, multimodal_cfg, prepr
         win_conv = copy.deepcopy([source['question'], source["chosen"]])
         rej_conv = copy.deepcopy([source['question'], source["rejected"]])
 
+    def cropwithbbox(pil_img, sub_image_info):
+        width, height = pil_img.size
+        x_min, y_min, x_max, y_max = sub_image_info
+        if sum([x_min, y_min, x_max, y_max]) < 5:
+            x_min = x_min * max(width, height)
+            y_min = y_min * max(width, height)
+            x_max = x_max * max(width, height)
+            y_max = y_max * max(width, height)
+        if width > height:
+            overlay = (width - height) // 2
+            y_min = max(0, y_min - overlay)
+            y_max = max(0, y_max - overlay)
+        else:
+            overlay = (height - width) // 2
+            x_min = max(0, x_min - overlay)
+            x_max = max(0, x_max - overlay)
+        center_point = [(x_min + x_max)//2, (y_min + y_max)//2]
+        half_sizes = [(x_max - x_min)//2, (y_max - y_min)//2]
+        cropped_half_size = max(max(half_sizes), 168)
+        upper_left_point = [center_point[0]-cropped_half_size, center_point[1]-cropped_half_size]
+        if upper_left_point[0] < 0:
+            center_point[0] += (-upper_left_point[0])
+        if upper_left_point[1] < 0:
+            center_point[1] += (-upper_left_point[1])
+        lower_right_point = [center_point[0]+cropped_half_size, center_point[1]+cropped_half_size]
+        if lower_right_point[0] > width:
+            center_point[0] -= (lower_right_point[0] - width)
+        if lower_right_point[1] > height:
+            center_point[1] -= (lower_right_point[1] - height)
+        cropped_region = [max(0, center_point[0]-cropped_half_size), max(0, center_point[1]-cropped_half_size), min(width, center_point[0]+cropped_half_size), min(height, center_point[1]+cropped_half_size)]
+        cropped_image = pil_img.crop(cropped_region)
+        return cropped_image
+    
     if 'image' in source:
         image = source['image']
-        image = multimodal_cfg['image_processor'](image)
+        
+
+        try:
+            # coords = self.detection_results[index]['text'].replace(' .','').replace('[','').replace(']','').split(', ')
+            win_coords = re.findall(r'[-+]?\d*\.\d+', source["chosen"]['value'].split('#')[0])  
+            win_coords = [float(x) for x in win_coords]
+        except Exception as e:
+            print(e)
+            print("Can not parse the coords: %s" % source["chosen"]['value'].split('#')[0])
+            win_coords = [0.25, 0.25, 0.75, 0.75]
+
+        try:
+            # coords = self.detection_results[index]['text'].replace(' .','').replace('[','').replace(']','').split(', ')
+            lose_coords = re.findall(r'[-+]?\d*\.\d+', source["rejected"]['value'].split('#')[0])  
+            lose_coords = [float(x) for x in lose_coords]
+        except Exception as e:
+            print(e)
+            print("Can not parse the coords: %s" % source["rejected"]['value'].split('#')[0])
+            lose_coords = [0.25, 0.25, 0.75, 0.75]
+
+        try:
+            win_image = cropwithbbox(image, win_coords)
+        except Exception as e:
+            coords = [0.25, 0.25, 0.75, 0.75]
+            win_image = cropwithbbox(image, coords)
+        try:
+            lose_image = cropwithbbox(image, lose_coords)
+        except Exception as e:
+            coords = [0.25, 0.25, 0.75, 0.75]
+            lose_image = cropwithbbox(image, coords)  
+
+    
+        win_images = [multimodal_cfg['image_processor'](image), multimodal_cfg['image_processor'](win_image)]
+        win_images = [torch.from_numpy(x) for x in win_images]
+        win_images = torch.stack(win_images)
+        lose_images = [multimodal_cfg['image_processor'](image), multimodal_cfg['image_processor'](lose_image)]
+        lose_images = [torch.from_numpy(x) for x in lose_images]
+        lose_images = torch.stack(lose_images)
+
+        # image = multimodal_cfg['image_processor'](image)
+        # win_images= multimodal_cfg['image_processor'](win_images)
+        # lose_images= multimodal_cfg['image_processor'](lose_images)
         win_conv = expand_image_token(win_conv, multimodal_cfg)
         rej_conv = expand_image_token(rej_conv, multimodal_cfg)
 
@@ -245,8 +320,11 @@ def encode_multimodal_preference_sample(source, tokenizer, multimodal_cfg, prepr
     # print('labels:', tokenizer.decode([(x if x != -100 else 0) for x in rej_data_dict['labels'].tolist()]), flush=True)
 
     # image exist in the data
+
     if 'image' in source:
-        rej_data_dict['image'] = win_data_dict['image'] = image
+        # rej_data_dict['image'] = win_data_dict['image'] = image
+        rej_data_dict['image'] = lose_images
+        win_data_dict['image'] = win_images 
     elif multimodal_cfg['is_multimodal']:
         # image does not exist in the data, but the model is multimodal
         crop_size = multimodal_cfg['image_processor'].crop_size
@@ -279,10 +357,14 @@ def preprocess_v1(
             source = source[1:]
 
         conv.messages = []
-        for j, sentence in enumerate(source):
-            role = roles[sentence["from"]]
-            assert role == conv.roles[j % 2], f"{i}"
-            conv.append_message(role, sentence["value"])
+        # for j, sentence in enumerate(source):
+        #     role = roles[sentence["from"]]
+        #     assert role == conv.roles[j % 2], f"{i}"
+        #     conv.append_message(role, sentence["value"])
+        conv.append_message(conv.roles[0], source[0]['value'])
+        conv.append_message(conv.roles[1], source[1]['value'].split('#')[0])
+        conv.append_message(conv.roles[0], '<image>' + '\nPlease answer the question based on the original image and local detail image.'+  source[0]['value'].split('Please provide the bounding box coordinate of the region')[0].replace('<image>\n', ''))
+        conv.append_message(conv.roles[1], source[1]['value'].split('#')[1])
         conversations.append(conv.get_prompt())
 
     # Tokenize conversations

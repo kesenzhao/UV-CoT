@@ -116,7 +116,8 @@ def dpo_loss(policy_chosen_logps: torch.FloatTensor,
         ref_logratios = 0
 
     logits = pi_logratios - ref_logratios
-
+    # offset
+    # losses = -F.logsigmoid(beta * logits-delta)
     losses = -F.logsigmoid(beta * logits)
     chosen_rewards = beta * (policy_chosen_logps -
                              reference_chosen_logps).detach()
@@ -218,6 +219,38 @@ def get_beta_and_logps(data_dict, model, args, is_minicpm=False, is_llava15=Fals
             labels=concatenated_labels,
             images=concatenated_images,
         )
+        # if args.lora_enable:
+        #     (
+        #         _,
+        #         _,
+        #         _,
+        #         _,
+        #         concatenated_inputs_embeds,
+        #         concatenated_labels
+        #     ) = model.module.prepare_inputs_labels_for_multimodal(
+        #         input_ids=concatenated_input_ids,
+        #         position_ids=None,
+        #         attention_mask=None,
+        #         past_key_values=None,
+        #         labels=concatenated_labels,
+        #         images=concatenated_images,
+        #     )
+        # else:
+        #     (
+        #         _,
+        #         _,
+        #         _,
+        #         _,
+        #         concatenated_inputs_embeds,
+        #         concatenated_labels
+        #     ) = model.prepare_inputs_labels_for_multimodal(
+        #         input_ids=concatenated_input_ids,
+        #         position_ids=None,
+        #         attention_mask=None,
+        #         past_key_values=None,
+        #         labels=concatenated_labels,
+        #         images=concatenated_images,
+        #     )
         output = model.forward(
             inputs_embeds=concatenated_inputs_embeds,
             labels=None,
@@ -296,8 +329,8 @@ class LLaVA15DPOTrainer(ZephyrTrainer):
                                                             beta=beta)
         reward_accuracies = (chosen_rewards > rejected_rewards).float()
 
-        SFT_weight = float(os.environ.get('SFT_weight', 0.0))
-        DPO_weight = float(os.environ.get('DPO_weight', 1.0))
+        SFT_weight = float(os.environ.get('SFT_weight', 0.9))
+        DPO_weight = float(os.environ.get('DPO_weight', 0.1))
         loss = DPO_weight * losses.mean() - SFT_weight * policy_win_logp.mean()
 
         t = 'train' if model.training else 'test'
