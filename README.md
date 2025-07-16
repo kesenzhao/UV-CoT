@@ -7,7 +7,7 @@
 
 ## Overview
 
- [fig1_v4.0.pdf](./images/fig1.svg) 
+![Figure 1: UV‑CoT Overview](./images/fig1.svg) 
 
 ## Install
 
@@ -183,9 +183,9 @@ bash scripts/v1_5/eval/cot_score.sh UV-CoT
 
 ## Visualization
 
- [fig5_v1.2.pdf](./images/fig5_v1.2.svg) 
+ ![fig5_v1.2.pdf](./images/fig5_v1.2.svg) 
 
- [fig6_v1.2.pdf](./images/fig6_v1.2.svg) 
+ ![fig6_v1.2.pdf](./images/fig6_v1.2.svg) 
 
 
 
