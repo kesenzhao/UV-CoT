@@ -1,6 +1,6 @@
 # UV-CoT: unsupervised Visual Chain-of-Thought Reasoning via Preference Optimization
 ## News 🎉🎉🎉
-Our paper has been accepted to ICCV 2025. The camera-ready version is available here: [link](https://arxiv.org/abs/2504.18397)
+Our paper is accepted by ICCV 2025. The lastest version of the paper is available here: [link](https://arxiv.org/abs/2504.18397)
 .
 ## Links
 1. Project page: [link](https://kesenzhao.github.io/my_project/projects/UV-CoT.html
